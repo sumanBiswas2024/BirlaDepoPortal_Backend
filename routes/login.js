@@ -27,14 +27,14 @@ const handleClientCall = (pool, functionName, data, response) => {
       .call(functionName, { ...data })
       .then((res, err) => {
         if (err) {
-          pool.release(client, function () {});
+          pool.release(client, function () { });
           console.log(err);
         }
-        pool.release(client, function () {});
+        pool.release(client, function () { });
         console.log(res);
       })
       .finally(() => {
-        pool.release(client, function () {});
+        pool.release(client, function () { });
       });
   });
 };
@@ -45,7 +45,8 @@ router.get("/auto_auth", checkAuth, (req, res) => {
   const decoded = jwt.verify(token, "this_string_should_be_longer");
 
   mySqlConnection.query(
-    "SELECT * FROM users WHERE user_code = ?",
+    // "SELECT * FROM users WHERE user_code = ?",
+    "SELECT id, name, user_code, email, user_type, mobile, status FROM users WHERE user_code = ?",  //Portal Security Assessment_DataMinimization: modified SQL query to select only necessary fields to avoid exposing sensitive information like password and rfc_password
     [decoded.user_code],
     (err, row, fields) => {
       if (!err) {
@@ -108,6 +109,7 @@ router.post("/login", (req, res, next) => {
               user_code: fetchedUser.user_code,
               userId: fetchedUser.id,
               rfc_password: fetchedUser.rfc_password,
+              user_type: fetchedUser.user_type  // Portal Security Assessment_JWT: adding user type in the token for role based access control in future
             },
             "this_string_should_be_longer",
             // expiresIn 5 min,
@@ -125,7 +127,16 @@ router.post("/login", (req, res, next) => {
             res.json({
               status: true,
               code: 0,
-              result: row,
+              // result: row,
+              result: [{    // Portal Security Assessment_DataMinimization: modified the result to include only necessary user details to avoid exposing sensitive information like password and rfc_password
+                id: fetchedUser.id,
+                name: fetchedUser.name,
+                user_code: fetchedUser.user_code,
+                email: fetchedUser.email,
+                user_type: fetchedUser.user_type,
+                mobile: fetchedUser.mobile,
+                status: fetchedUser.status
+              }],
               token: token,
               message: "Authenticated! Token Generated for 5 min",
             });
@@ -144,10 +155,34 @@ router.post("/login", (req, res, next) => {
   );
 });
 
-router.get("/allUser", (req, res, next) => {
+router.get("/allUser", checkAuth, (req, res, next) => {   //Portal Security Assessment_RBAC: added checkAuth middleware to verify token before giving access to this route
   res.set("Connection", "close");
 
-  mySqlConnection.query("SELECT * FROM users", (err, row, fields) => {
+  // Portal Security Assessment_RBAC: added role based access control to allow only admin users to access this route, assuming user_type 1 is for admin and 2 is for regular users  
+  if (!req.user || req.user.userId == undefined) {
+    return res.status(403).json({
+      status: false,
+      code: 403,
+      result: [],
+      message: "Unauthorized Access"
+    });
+  }
+
+  if (req.user.user_type != 1) {
+    return res.status(403).json({
+      status: false,
+      code: 403,
+      result: [],
+      message: "Forbidden - Admin Only"
+    });
+  }
+
+  // mySqlConnection.query("SELECT * FROM users", (err, row, fields) => {
+
+  /*  Portal Security Assessment_DataMinimization: modified SQL query to select only necessary fields to avoid exposing sensitive information
+      like password and rfc_password
+   */
+  mySqlConnection.query("SELECT id, name, user_code, email, user_type, mobile, status FROM users", (err, row, fields) => {
     if (!err) {
       if (row.length == 0) {
         return res.json({
@@ -181,7 +216,8 @@ router.post("/user_data", (req, res, next) => {
   console.log(data);
 
   mySqlConnection.query(
-    "SELECT * FROM users WHERE id=?",
+    // "SELECT * FROM users WHERE id=?",
+    "SELECT id, name, user_code, email, user_type, mobile, status FROM users WHERE id = ?",
     [data.id],
     (err, row, fields) => {
       if (!err) {
@@ -621,27 +657,27 @@ router.post("/openapi/get_requests", (req, res, next) => {
   }
   console.log(
     "select * from so_requests where date(requested_at) >= date(" +
-      data.start_date +
-      ") and date(requested_at) <= date(" +
-      data.end_date +
-      ") and status like '" +
-      data.status +
-      "' and dms_req_no like '" +
-      data.dms_req_no +
-      "' limit ?,?"
+    data.start_date +
+    ") and date(requested_at) <= date(" +
+    data.end_date +
+    ") and status like '" +
+    data.status +
+    "' and dms_req_no like '" +
+    data.dms_req_no +
+    "' limit ?,?"
   );
   mysqlConnectionDMS.query(
     "select * from so_requests where date(requested_at) >= date('" +
-      data.start_date +
-      "') and date(requested_at) <= date('" +
-      data.end_date +
-      "') and status like '" +
-      data.status +
-      "' and dms_req_no like '" +
-      data.dms_req_no +
-      "%' and permitted_depot_user like '%" +
-      data.login_id +
-      "%' order by requested_at desc limit ?,?",
+    data.start_date +
+    "') and date(requested_at) <= date('" +
+    data.end_date +
+    "') and status like '" +
+    data.status +
+    "' and dms_req_no like '" +
+    data.dms_req_no +
+    "%' and permitted_depot_user like '%" +
+    data.login_id +
+    "%' order by requested_at desc limit ?,?",
     [data.offset, data.limit],
     (err2, row2, fields) => {
       if (!err2) {
