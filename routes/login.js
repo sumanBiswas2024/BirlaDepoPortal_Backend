@@ -7,10 +7,25 @@ const jwt = require("jsonwebtoken");
 const checkAuth = require("../middleware/check-auth");
 const poolCreator = require("../middleware/rfc-pool-creator");
 
+const rateLimit = require("express-rate-limit");  // Portal Security Assessment_RateLimiting: added express-rate-limit to limit the number of requests to the /allUser route and prevent brute force attacks
+
 const openApiConfig = {
   appId: "4dc71a29d661ac06bf3e5b5b725be10c",
   appSecret: "$2a$12$zxBThToaPuXoeXuj6kBYZuENeBZW4Vg9u0yBU7ghyxEnQnVx2CUte",
 };
+
+// Portal Security Assessment_RateLimiting: Rate limiter for /allUser endpoint to prevent scraping or excessive API calls
+const allUserLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // limit each IP to 50 requests per window
+  message: {
+    status: false,
+    code: 429,
+    message: "Too many requests. Please try again later."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // router.post("/create",(req,res,next) => {
 //     let user = req.body;
@@ -155,7 +170,7 @@ router.post("/login", (req, res, next) => {
   );
 });
 
-router.get("/allUser", checkAuth, (req, res, next) => {   //Portal Security Assessment_RBAC: added checkAuth middleware to verify token before giving access to this route
+router.get("/allUser", allUserLimiter, checkAuth, (req, res, next) => {   //Portal Security Assessment_RBAC: added checkAuth middleware to verify token before giving access to this route
   res.set("Connection", "close");
 
   // Portal Security Assessment_RBAC: added role based access control to allow only admin users to access this route, assuming user_type 1 is for admin and 2 is for regular users  
