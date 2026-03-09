@@ -197,32 +197,113 @@ router.get("/allUser", allUserLimiter, checkAuth, (req, res, next) => {   //Port
   /*  Portal Security Assessment_DataMinimization: modified SQL query to select only necessary fields to avoid exposing sensitive information
       like password and rfc_password
    */
-  mySqlConnection.query("SELECT id, name, user_code, email, user_type, mobile, status FROM users", (err, row, fields) => {
-    if (!err) {
-      if (row.length == 0) {
+  // mySqlConnection.query("SELECT id, name, user_code, email, user_type, mobile, status FROM users", (err, row, fields) => {
+  //   if (!err) {
+  //     if (row.length == 0) {
+  //       return res.json({
+  //         status: false,
+  //         code: 100,
+  //         result: [],
+  //         message: "No User Found",
+  //       });
+  //     } else {
+  //       res.json({
+  //         status: true,
+  //         code: 0,
+  //         result: row,
+  //         message: "User Present",
+  //       });
+  //     }
+  //   } else {
+  //     return res.json({
+  //       status: false,
+  //       code: 100,
+  //       result: [],
+  //       message: "No User Found",
+  //     });
+  //   }
+  // });
+
+  // Portal Security Assessment_Pagination: added server-side pagination using page and limit parameters
+
+  const page = parseInt(req.query.page);
+  const limit = parseInt(req.query.limit);
+
+  if (!page && !limit) {
+
+    // return ALL users (used for Excel + frontend search cache)
+    mySqlConnection.query(
+      "SELECT id, name, user_code, email, user_type, mobile, status FROM users",
+      (err, row) => {
+
+        if (err) {
+          return res.json({
+            status: false,
+            code: 100,
+            result: [],
+            message: "Error fetching users",
+          });
+        }
+
         return res.json({
-          status: false,
-          code: 100,
-          result: [],
-          message: "No User Found",
-        });
-      } else {
-        res.json({
           status: true,
           code: 0,
           result: row,
+          total: row.length,
           message: "User Present",
         });
+
       }
-    } else {
-      return res.json({
-        status: false,
-        code: 100,
-        result: [],
-        message: "No User Found",
-      });
-    }
-  });
+    );
+
+  } else {
+
+    const offset = (page - 1) * limit;
+
+    mySqlConnection.query(
+      "SELECT COUNT(*) as total FROM users",
+      (errCount, countResult) => {
+
+        if (errCount) {
+          return res.json({
+            status: false,
+            code: 100,
+            result: [],
+            message: "Error fetching user count",
+          });
+        }
+
+        const total = countResult[0].total;
+
+        mySqlConnection.query(
+          "SELECT id, name, user_code, email, user_type, mobile, status FROM users LIMIT ? OFFSET ?",
+          [limit, offset],
+          (err, row) => {
+
+            if (err) {
+              return res.json({
+                status: false,
+                code: 100,
+                result: [],
+                message: "Error fetching users",
+              });
+            }
+
+            return res.json({
+              status: true,
+              code: 0,
+              result: row,
+              total: total,
+              message: "User Present",
+            });
+
+          }
+        );
+
+      }
+    );
+
+  }
 });
 
 router.post("/user_data", (req, res, next) => {
